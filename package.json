@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "supabase:types": "supabase gen types typescript --local > src/lib/supabase/types.ts",
     "preview": "vite preview"
   },
   "dependencies": {

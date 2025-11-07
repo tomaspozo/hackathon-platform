@@ -6,6 +6,9 @@ export type Profile = {
   first_name: string | null
   last_name: string | null
   avatar_url: string | null
+  role: 'admin' | 'participant' | 'judge'
+  organization: string | null
+  title: string | null
   created_at: string
   updated_at: string
 }
@@ -14,6 +17,9 @@ export type ProfileInput = {
   first_name?: string | null
   last_name?: string | null
   avatar_url?: string | null
+  role?: Profile['role']
+  organization?: string | null
+  title?: string | null
 }
 
 export type UseProfileState = {

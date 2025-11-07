@@ -39,6 +39,9 @@ const useProvideProfile = (): UseProfileState => {
         first_name: null,
         last_name: null,
         avatar_url: null,
+        role: 'participant',
+        organization: null,
+        title: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })

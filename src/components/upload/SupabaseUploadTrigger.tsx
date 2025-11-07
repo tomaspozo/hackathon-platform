@@ -181,11 +181,18 @@ export const SupabaseUploadTrigger = forwardRef<
       }
 
       if (isValidElement(children)) {
-        const child = children as ReactElement
+        type ClickableChildProps = {
+          onClick?: (event: MouseEvent<HTMLElement>) => void
+          children?: ReactNode
+          [key: string]: unknown
+        }
+
+        const child = children as ReactElement<ClickableChildProps>
+        const childProps = child.props ?? {}
+
         const mergedOnClick = (event: MouseEvent<HTMLElement>) => {
-          // Preserve consumer's onClick
-          if (typeof child.props.onClick === "function") {
-            child.props.onClick(event)
+          if (typeof childProps.onClick === "function") {
+            childProps.onClick(event)
           }
 
           if (event.defaultPrevented) return
@@ -195,12 +202,12 @@ export const SupabaseUploadTrigger = forwardRef<
         if (asChild) {
           return (
             <Slot
-              {...child.props}
+              {...childProps}
               onClick={mergedOnClick}
               data-upload-loading={loading ? "" : undefined}
               aria-busy={loading || undefined}
             >
-              {child.props.children}
+              {childProps.children}
             </Slot>
           )
         }
