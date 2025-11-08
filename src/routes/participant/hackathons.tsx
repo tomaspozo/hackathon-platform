@@ -2,23 +2,43 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
-import { getOpenHackathons, registerForHackathon, getMyHackathons, checkIfRegistered } from '@/lib/supabase/participants'
+import {
+  getOpenHackathons,
+  registerForHackathon,
+  getMyHackathons,
+  checkIfRegistered,
+} from '@/lib/supabase/participants'
 import { listHackathonCategories } from '@/lib/supabase/hackathons'
 import { useHackathonSwitcher } from '@/hooks/use-hackathon-switcher'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
 import { Separator } from '@/components/ui/separator'
 import type { Tables } from '@/lib/supabase/types'
+import {
+  getStatusBadgeClassName,
+  getStatusBadgeVariant,
+} from '@/components/hackathon-switcher'
+import { cn } from '@/lib/utils'
 
 type Hackathon = Tables<'hackathons'>
-type HackathonWithCategories = Hackathon & { categories?: Array<{ id: string; name: string }> }
+type HackathonWithCategories = Hackathon & {
+  categories?: Array<{ id: string; name: string }>
+}
 
 export function ParticipantHackathonsPage() {
   const navigate = useNavigate()
   const { refreshHackathons } = useHackathonSwitcher()
-  const [openHackathons, setOpenHackathons] = useState<HackathonWithCategories[]>([])
+  const [openHackathons, setOpenHackathons] = useState<
+    HackathonWithCategories[]
+  >([])
   const [myHackathons, setMyHackathons] = useState<Hackathon[]>([])
   const [loading, setLoading] = useState(true)
   const [registering, setRegistering] = useState<string | null>(null)
@@ -31,7 +51,9 @@ export function ParticipantHackathonsPage() {
     ])
 
     if (openResponse.error) {
-      toast.error('Failed to load open hackathons', { description: openResponse.error.message })
+      toast.error('Failed to load open hackathons', {
+        description: openResponse.error.message,
+      })
       setLoading(false)
       return
     }
@@ -47,7 +69,9 @@ export function ParticipantHackathonsPage() {
     setOpenHackathons(hackathonsWithCategories)
 
     if (myResponse.error) {
-      toast.error('Failed to load your hackathons', { description: myResponse.error.message })
+      toast.error('Failed to load your hackathons', {
+        description: myResponse.error.message,
+      })
     } else {
       const hackathons = (myResponse.data || [])
         .map((participant: any) => participant.hackathons)
@@ -78,14 +102,6 @@ export function ParticipantHackathonsPage() {
     navigate('/team')
   }
 
-  const statusColors: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-    DRAFT: 'outline',
-    OPEN: 'secondary',
-    STARTED: 'default',
-    FINISHED: 'outline',
-    CANCELED: 'destructive',
-  }
-
   if (loading) {
     return (
       <section className="container space-y-4 py-10">
@@ -96,20 +112,27 @@ export function ParticipantHackathonsPage() {
     )
   }
 
+  // Filter out hackathons that are already in "My Hackathons"
+  const myHackathonIds = new Set(myHackathons.map((h) => h.id))
+  const availableToJoin = openHackathons.filter(
+    (h) => !myHackathonIds.has(h.id)
+  )
+
   return (
     <section className="container space-y-8 py-10">
       <header>
         <h1 className="text-3xl font-semibold tracking-tight">Hackathons</h1>
         <p className="text-muted-foreground">
-          Browse hackathons you can join and view the ones you've already registered for.
+          Browse hackathons you can join and view the ones you've already
+          registered for.
         </p>
       </header>
 
-      {openHackathons.length > 0 && (
+      {availableToJoin.length > 0 && (
         <div className="space-y-4">
           <h2 className="text-2xl font-semibold">Available to Join</h2>
           <div className="grid gap-4 md:grid-cols-2">
-            {openHackathons.map((hackathon) => (
+            {availableToJoin.map((hackathon) => (
               <HackathonCard
                 key={hackathon.id}
                 hackathon={hackathon}
@@ -126,50 +149,24 @@ export function ParticipantHackathonsPage() {
           <h2 className="text-2xl font-semibold">My Hackathons</h2>
           <div className="grid gap-4 md:grid-cols-2">
             {myHackathons.map((hackathon) => (
-              <Card key={hackathon.id}>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <CardTitle>{hackathon.name}</CardTitle>
-                      <CardDescription>{hackathon.description}</CardDescription>
-                    </div>
-                    <Badge variant={statusColors[hackathon.status] || 'outline'}>
-                      {hackathon.status}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2 text-sm">
-                    <div>
-                      <span className="font-medium">Start:</span>{' '}
-                      {format(new Date(hackathon.start_at), 'PPp')}
-                    </div>
-                    <div>
-                      <span className="font-medium">End:</span>{' '}
-                      {format(new Date(hackathon.end_at), 'PPp')}
-                    </div>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => navigate('/team')}>
-                      View Team
-                    </Button>
-                    {hackathon.status === 'STARTED' && (
-                      <Button onClick={() => navigate('/submission')}>Submit Project</Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+              <HackathonCard
+                key={hackathon.id}
+                hackathon={hackathon}
+                onRegister={handleRegister}
+                registering={registering === hackathon.id}
+              />
             ))}
           </div>
         </div>
       )}
 
-      {openHackathons.length === 0 && myHackathons.length === 0 && (
+      {availableToJoin.length === 0 && myHackathons.length === 0 && (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
             <p>No hackathons available at the moment.</p>
-            <p className="mt-2 text-sm">Check back later for new opportunities!</p>
+            <p className="mt-2 text-sm">
+              Check back later for new opportunities!
+            </p>
           </CardContent>
         </Card>
       )}
@@ -192,14 +189,6 @@ function HackathonCard({
     checkIfRegistered(hackathon.id).then(({ data }) => setIsRegistered(data))
   }, [hackathon.id])
 
-  const statusColors: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-    DRAFT: 'outline',
-    OPEN: 'secondary',
-    STARTED: 'default',
-    FINISHED: 'outline',
-    CANCELED: 'destructive',
-  }
-
   return (
     <Card>
       <CardHeader>
@@ -208,18 +197,23 @@ function HackathonCard({
             <CardTitle>{hackathon.name}</CardTitle>
             <CardDescription>{hackathon.description}</CardDescription>
           </div>
-          <Badge variant={statusColors[hackathon.status] || 'outline'}>
-            {hackathon.status}
+          <Badge
+            variant={getStatusBadgeVariant(hackathon.status)}
+            className={cn(getStatusBadgeClassName(hackathon.status))}
+          >
+            {hackathon.status || 'DRAFT'}
           </Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2 text-sm">
           <div>
-            <span className="font-medium">Start:</span> {format(new Date(hackathon.start_at), 'PPp')}
+            <span className="font-medium">Start:</span>{' '}
+            {format(new Date(hackathon.start_at), 'PPp')}
           </div>
           <div>
-            <span className="font-medium">End:</span> {format(new Date(hackathon.end_at), 'PPp')}
+            <span className="font-medium">End:</span>{' '}
+            {format(new Date(hackathon.end_at), 'PPp')}
           </div>
           {hackathon.registration_open_at && (
             <div>
@@ -258,7 +252,10 @@ function HackathonCard({
               Already Registered
             </Button>
           ) : (
-            <Button onClick={() => onRegister(hackathon.id)} disabled={registering}>
+            <Button
+              onClick={() => onRegister(hackathon.id)}
+              disabled={registering}
+            >
               {registering ? (
                 <>
                   <Spinner className="mr-2 h-4 w-4" />
