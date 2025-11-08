@@ -1,5 +1,5 @@
 import { CurrentUserAvatar } from '@/components/auth/current-user-avatar'
-import { OtpAuth } from '@/components/auth/otp-auth'
+import { LoginForm } from '@/components/auth/login-form'
 import { useSupabase } from '@/hooks/use-supabase'
 import { Sparkles, Upload, MessageSquare, Shield } from 'lucide-react'
 import { RealtimeChat } from '@/components/realtime-chat'
@@ -111,7 +111,7 @@ export function Showcase() {
                         </AlertDescription>
                       </Alert>
                       <div className="flex justify-center">
-                        <OtpAuth />
+                        <LoginForm />
                       </div>
                     </div>
                   ) : (

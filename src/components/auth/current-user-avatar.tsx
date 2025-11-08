@@ -1,6 +1,8 @@
+import { useNavigate } from 'react-router-dom'
 import { useSupabase } from '@/hooks/use-supabase'
 import { useProfile } from '@/hooks/use-profile'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,9 +12,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
-import { LogOut, User } from 'lucide-react'
+import { LogOut, Settings, User } from 'lucide-react'
 
 export function CurrentUserAvatar() {
+  const navigate = useNavigate()
   const { user, signOut } = useSupabase()
   const { profile } = useProfile()
 
@@ -69,9 +72,18 @@ export function CurrentUserAvatar() {
             <p className="text-xs leading-none text-muted-foreground">
               {user.email}
             </p>
+            {profile?.role && (
+              <Badge variant="outline" className="w-fit uppercase">
+                {profile.role}
+              </Badge>
+            )}
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => navigate('/profile')}>
+          <Settings className="mr-2 h-4 w-4" />
+          <span>Profile Settings</span>
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={handleSignOut}>
           <LogOut className="mr-2 h-4 w-4" />
           <span>Sign out</span>

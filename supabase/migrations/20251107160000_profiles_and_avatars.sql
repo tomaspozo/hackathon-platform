@@ -127,3 +127,31 @@ create trigger profiles_set_updated_at
   for each row
   execute procedure public.handle_profiles_updated_at();
 
+-- automatically create a profile record when a new user signs up.
+-- note: the role column is added in migration 20251107170000_hackathon_core_schema
+-- if that migration hasn't run yet, the role field will be ignored gracefully
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.profiles (user_id, first_name, last_name, avatar_url)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data->>'first_name', null),
+    coalesce(new.raw_user_meta_data->>'last_name', null),
+    coalesce(new.raw_user_meta_data->>'avatar_url', null)
+  )
+  on conflict (user_id) do nothing;
+  return new;
+end;
+$$;
+
+-- trigger the function when a new user is created in auth.users.
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row
+  execute function public.handle_new_user();
+

@@ -18,6 +18,23 @@ begin
   end if;
 end $$;
 
+-- create the hackathon_status enum to track hackathon lifecycle states.
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_type
+    where typname = 'hackathon_status'
+      and pg_type.typnamespace = (
+        select oid
+        from pg_namespace
+        where nspname = 'public'
+      )
+  ) then
+    create type public.hackathon_status as enum ('DRAFT', 'OPEN', 'STARTED', 'FINISHED', 'CANCELED');
+  end if;
+end $$;
+
 -- extend the profiles table to include role assignments and optional metadata.
 alter table public.profiles
   add column if not exists role public.user_role not null default 'participant';
@@ -60,6 +77,7 @@ create table if not exists public.hackathons (
   registration_open_at timestamp with time zone,
   registration_close_at timestamp with time zone,
   is_active boolean not null default false,
+  status public.hackathon_status not null default 'DRAFT',
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null default now(),
   constraint hackathons_slug_unique unique (slug),
@@ -191,12 +209,11 @@ create table if not exists public.teams (
   hackathon_id uuid not null references public.hackathons (id) on delete cascade,
   created_by uuid not null references auth.users (id) on delete cascade,
   name text not null,
-  slug text not null,
+  slug text,
   description text,
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null default now(),
-  constraint teams_unique_name unique (hackathon_id, name),
-  constraint teams_unique_slug unique (hackathon_id, slug)
+  constraint teams_unique_name unique (hackathon_id, name)
 );
 
 comment on table public.teams is 'Participant teams competing in a hackathon.';
@@ -236,6 +253,81 @@ create unique index if not exists team_members_single_owner_unique
 
 create trigger team_members_set_updated_at
   before update on public.team_members
+  for each row
+  execute function public.touch_updated_at();
+
+-- hackathon_participants tracks user registrations for hackathons.
+create table if not exists public.hackathon_participants (
+  id uuid default gen_random_uuid() primary key,
+  hackathon_id uuid not null references public.hackathons (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  registered_at timestamp with time zone not null default now(),
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  constraint hackathon_participants_unique unique (hackathon_id, user_id)
+);
+
+comment on table public.hackathon_participants is 'Tracks which users have registered/joined which hackathons.';
+
+create index if not exists hackathon_participants_hackathon_id_idx
+  on public.hackathon_participants (hackathon_id);
+
+create index if not exists hackathon_participants_user_id_idx
+  on public.hackathon_participants (user_id);
+
+create trigger hackathon_participants_set_updated_at
+  before update on public.hackathon_participants
+  for each row
+  execute function public.touch_updated_at();
+
+-- create the team_invite_status enum for tracking invite states.
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_type
+    where typname = 'team_invite_status'
+      and pg_type.typnamespace = (
+        select oid
+        from pg_namespace
+        where nspname = 'public'
+      )
+  ) then
+    create type public.team_invite_status as enum ('pending', 'accepted', 'rejected');
+  end if;
+end $$;
+
+-- team_invites manages email-based team invitations.
+create table if not exists public.team_invites (
+  id uuid default gen_random_uuid() primary key,
+  team_id uuid not null references public.teams (id) on delete cascade,
+  inviter_id uuid not null references auth.users (id) on delete cascade,
+  invitee_email text not null,
+  invitee_user_id uuid references auth.users (id) on delete set null,
+  status public.team_invite_status not null default 'pending',
+  token text not null default gen_random_uuid()::text,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  constraint team_invites_unique_token unique (token)
+);
+
+comment on table public.team_invites is 'Email-based team invitations with token-based acceptance.';
+comment on column public.team_invites.invitee_user_id is 'Set when invitee has an account, null if they need to sign up first.';
+
+create index if not exists team_invites_team_id_idx
+  on public.team_invites (team_id);
+
+create index if not exists team_invites_invitee_email_idx
+  on public.team_invites (invitee_email);
+
+create index if not exists team_invites_invitee_user_id_idx
+  on public.team_invites (invitee_user_id);
+
+create index if not exists team_invites_token_idx
+  on public.team_invites (token);
+
+create trigger team_invites_set_updated_at
+  before update on public.team_invites
   for each row
   execute function public.touch_updated_at();
 
@@ -560,6 +652,83 @@ as $$
   );
 $$;
 
+create or replace function public.user_has_team_in_hackathon(p_user_id uuid, p_hackathon_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.team_members tm
+    join public.teams t on t.id = tm.team_id
+    where tm.user_id = p_user_id
+      and t.hackathon_id = p_hackathon_id
+  );
+$$;
+
+create or replace function public.get_current_user_email()
+returns text
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select email from auth.users where id = auth.uid();
+$$;
+
+create or replace function public.get_hackathon_status(target_hackathon_id uuid)
+returns public.hackathon_status
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select status
+  from public.hackathons
+  where id = target_hackathon_id;
+$$;
+
+create or replace function public.can_register(target_hackathon_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select status = 'OPEN'::public.hackathon_status
+  from public.hackathons
+  where id = target_hackathon_id;
+$$;
+
+create or replace function public.can_manage_team(target_hackathon_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select status in ('OPEN'::public.hackathon_status, 'STARTED'::public.hackathon_status)
+  from public.hackathons
+  where id = target_hackathon_id;
+$$;
+
+create or replace function public.can_submit(target_hackathon_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select 
+    status = 'STARTED'::public.hackathon_status
+    and now() >= start_at
+    and now() <= end_at
+  from public.hackathons
+  where id = target_hackathon_id;
+$$;
+
 
 -- enable row level security on all newly created tables.
 alter table public.hackathons enable row level security;
@@ -567,6 +736,8 @@ alter table public.hackathon_categories enable row level security;
 alter table public.judging_criteria enable row level security;
 alter table public.teams enable row level security;
 alter table public.team_members enable row level security;
+alter table public.hackathon_participants enable row level security;
+alter table public.team_invites enable row level security;
 alter table public.project_submissions enable row level security;
 alter table public.judge_assignments enable row level security;
 alter table public.judging_scores enable row level security;
@@ -646,17 +817,57 @@ create policy "teams readable to stakeholders" on public.teams
   for select
   to authenticated
   using (
-    public.is_admin()
-    or public.is_team_member(id)
-    or public.is_assigned_judge(id)
+    -- admin can see all teams
+    exists (
+      select 1
+      from public.profiles
+      where user_id = auth.uid()
+        and role = 'admin'
+    )
+    or
+    -- team member can see their team
+    exists (
+      select 1
+      from public.team_members
+      where team_id = teams.id
+        and user_id = auth.uid()
+    )
+    or
+    -- assigned judge can see team
+    exists (
+      select 1
+      from public.judge_assignments
+      where team_id = teams.id
+        and judge_id = auth.uid()
+    )
+    or
+    -- team creator can see their team (even before being added as member)
+    created_by = auth.uid()
   );
 
 create policy "team creators insert" on public.teams
   for insert
   to authenticated
   with check (
-    public.is_admin()
-    or created_by = (select auth.uid())
+    -- allow if user is admin
+    exists (
+      select 1
+      from public.profiles
+      where user_id = auth.uid()
+        and role = 'admin'
+    )
+    or
+    -- allow if all conditions are met
+    (
+      created_by = auth.uid()
+      and exists (
+        select 1
+        from public.hackathons h
+        where h.id = hackathon_id
+          and h.status in ('OPEN'::public.hackathon_status, 'STARTED'::public.hackathon_status)
+      )
+      and not public.user_has_team_in_hackathon(auth.uid(), hackathon_id)
+    )
   );
 
 create policy "team owners update" on public.teams
@@ -694,8 +905,38 @@ create policy "team owners add members" on public.team_members
   for insert
   to authenticated
   with check (
-    public.is_admin()
-    or public.is_team_owner(team_id)
+    -- admin can add anyone
+    exists (
+      select 1
+      from public.profiles
+      where user_id = auth.uid()
+        and role = 'admin'
+    )
+    or
+    -- team owner can add members
+    exists (
+      select 1
+      from public.team_members existing_member
+      where existing_member.team_id = team_members.team_id
+        and existing_member.user_id = auth.uid()
+        and existing_member.is_owner = true
+    )
+    or
+    -- team creator can add themselves as first member
+    (
+      user_id = auth.uid()
+      and exists (
+        select 1
+        from public.teams t
+        where t.id = team_members.team_id
+          and t.created_by = auth.uid()
+      )
+      and not exists (
+        select 1
+        from public.team_members existing_member
+        where existing_member.team_id = team_members.team_id
+      )
+    )
   );
 
 create policy "team owners update members" on public.team_members
@@ -719,6 +960,153 @@ create policy "team owners remove members" on public.team_members
   );
 
 
+-- hackathon_participants policies: users can register themselves.
+create policy "participants readable by self and admins" on public.hackathon_participants
+  for select
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.profiles
+      where user_id = auth.uid()
+        and role = 'admin'
+    )
+    or user_id = auth.uid()
+  );
+
+create policy "participants insertable by self" on public.hackathon_participants
+  for insert
+  to authenticated
+  with check (
+    user_id = auth.uid()
+    and exists (
+      select 1
+      from public.hackathons
+      where id = hackathon_id
+        and status = 'OPEN'::public.hackathon_status
+    )
+  );
+
+create policy "participants deletable by self and admins" on public.hackathon_participants
+  for delete
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.profiles
+      where user_id = auth.uid()
+        and role = 'admin'
+    )
+    or user_id = auth.uid()
+  );
+
+
+-- team_invites policies: team owners can invite, invitees can respond.
+create policy "invites readable by team owners and invitees" on public.team_invites
+  for select
+  to authenticated
+  using (
+    -- admin can see all invites
+    exists (
+      select 1
+      from public.profiles
+      where user_id = auth.uid()
+        and role = 'admin'
+    )
+    or
+    -- team owner can see invites for their team
+    exists (
+      select 1
+      from public.team_members
+      where team_id = team_invites.team_id
+        and user_id = auth.uid()
+        and is_owner = true
+    )
+    or
+    -- invitee can see their invite
+    invitee_email = public.get_current_user_email()
+    or
+    invitee_user_id = auth.uid()
+  );
+
+create policy "team owners can create invites" on public.team_invites
+  for insert
+  to authenticated
+  with check (
+    exists (
+      select 1
+      from public.profiles
+      where user_id = auth.uid()
+        and role = 'admin'
+    )
+    or
+    (
+      exists (
+        select 1
+        from public.team_members
+        where team_id = team_invites.team_id
+          and user_id = auth.uid()
+          and is_owner = true
+      )
+      and exists (
+        select 1
+        from public.teams t
+        join public.hackathons h on h.id = t.hackathon_id
+        where t.id = team_invites.team_id
+          and h.status in ('OPEN'::public.hackathon_status, 'STARTED'::public.hackathon_status)
+      )
+    )
+  );
+
+create policy "invitees can update their invites" on public.team_invites
+  for update
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.profiles
+      where user_id = auth.uid()
+        and role = 'admin'
+    )
+    or
+    invitee_email = public.get_current_user_email()
+    or
+    invitee_user_id = auth.uid()
+  )
+  with check (
+    exists (
+      select 1
+      from public.profiles
+      where user_id = auth.uid()
+        and role = 'admin'
+    )
+    or
+    invitee_email = public.get_current_user_email()
+    or
+    invitee_user_id = auth.uid()
+  );
+
+create policy "team owners can delete invites" on public.team_invites
+  for delete
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.profiles
+      where user_id = auth.uid()
+        and role = 'admin'
+    )
+    or
+    exists (
+      select 1
+      from public.team_members
+      where team_id = team_invites.team_id
+        and user_id = auth.uid()
+        and is_owner = true
+    )
+  );
+
+
 -- project submissions accessible to team stakeholders and judges.
 create policy "submissions readable" on public.project_submissions
   for select
@@ -734,7 +1122,10 @@ create policy "team owners insert submissions" on public.project_submissions
   to authenticated
   with check (
     public.is_admin()
-    or public.is_team_owner(team_id)
+    or (
+      public.is_team_owner(team_id)
+      and public.can_submit(hackathon_id)
+    )
   );
 
 create policy "team owners update submissions" on public.project_submissions
@@ -746,7 +1137,10 @@ create policy "team owners update submissions" on public.project_submissions
   )
   with check (
     public.is_admin()
-    or public.is_team_owner(team_id)
+    or (
+      public.is_team_owner(team_id)
+      and public.can_submit(hackathon_id)
+    )
   );
 
 create policy "team owners delete submissions" on public.project_submissions
