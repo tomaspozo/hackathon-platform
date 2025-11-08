@@ -21,6 +21,11 @@ import {
 } from '@/lib/supabase/hackathons'
 import { useSupabase } from '@/hooks/use-supabase'
 import { useProfile } from '@/hooks/use-profile'
+import {
+  getStatusBadgeClassName,
+  getStatusBadgeVariant,
+} from '@/components/hackathon-switcher'
+import { cn } from '@/lib/utils'
 
 type Hackathon = Tables<'hackathons'>
 type HackathonCategory = Tables<'hackathon_categories'>
@@ -51,7 +56,8 @@ export function LandingPage() {
       setError(null)
 
       try {
-        const { data: activeHackathon, error: activeError } = await getActiveHackathon()
+        const { data: activeHackathon, error: activeError } =
+          await getActiveHackathon()
 
         if (activeError) {
           throw activeError
@@ -81,7 +87,11 @@ export function LandingPage() {
         setCriteria(criteriaResponse.data ?? [])
       } catch (err) {
         if (!isMounted) return
-        setError(err instanceof Error ? err.message : 'Failed to load hackathon information.')
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Failed to load hackathon information.'
+        )
         setHackathon(null)
         setCategories([])
         setCriteria([])
@@ -139,9 +149,12 @@ export function LandingPage() {
   return (
     <section className="container space-y-8 py-10">
       <header className="space-y-2">
-        <h1 className="text-3xl font-semibold tracking-tight">Welcome to the Hackathon Platform</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">
+          Welcome to the Hackathon Platform
+        </h1>
         <p className="text-muted-foreground">
-          Track the current event, manage your teams, and stay on top of judging.
+          Track the current event, manage your teams, and stay on top of
+          judging.
         </p>
       </header>
 
@@ -152,7 +165,9 @@ export function LandingPage() {
       ) : error ? (
         <Card className="border-destructive/50 bg-destructive/5">
           <CardHeader>
-            <CardTitle className="text-destructive">Something went wrong</CardTitle>
+            <CardTitle className="text-destructive">
+              Something went wrong
+            </CardTitle>
             <CardDescription>{error}</CardDescription>
           </CardHeader>
           <CardFooter>
@@ -166,10 +181,12 @@ export function LandingPage() {
           <Card>
             <CardHeader className="gap-3">
               <div className="flex items-center gap-2">
-                <Badge variant="secondary">Active</Badge>
-                <span className="text-xs uppercase text-muted-foreground">
-                  {renderDate(hackathon.start_at)} &mdash; {renderDate(hackathon.end_at)}
-                </span>
+                <Badge
+                  variant={getStatusBadgeVariant(hackathon.status)}
+                  className={cn(getStatusBadgeClassName(hackathon.status))}
+                >
+                  {hackathon.status || 'DRAFT'}
+                </Badge>
               </div>
               <CardTitle className="text-2xl">{hackathon.name}</CardTitle>
               {hackathon.description && (
@@ -192,7 +209,8 @@ export function LandingPage() {
                     Hackathon window
                   </h3>
                   <p className="text-sm">
-                    {renderDate(hackathon.start_at)} &mdash; {renderDate(hackathon.end_at)}
+                    {renderDate(hackathon.start_at)} &mdash;{' '}
+                    {renderDate(hackathon.end_at)}
                   </p>
                 </div>
               </div>
@@ -210,7 +228,9 @@ export function LandingPage() {
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-medium">{category.name}</span>
-                          <Badge variant="outline">#{category.display_order + 1}</Badge>
+                          <Badge variant="outline">
+                            #{category.display_order + 1}
+                          </Badge>
                         </div>
                         {category.description && (
                           <p className="mt-1 text-sm text-muted-foreground">
@@ -282,8 +302,8 @@ export function LandingPage() {
           <CardHeader>
             <CardTitle>No active hackathon right now</CardTitle>
             <CardDescription>
-              Check back later or, if you&apos;re an admin, launch the next event to get things
-              started.
+              Check back later or, if you&apos;re an admin, launch the next
+              event to get things started.
             </CardDescription>
           </CardHeader>
           <CardFooter>
@@ -302,6 +322,3 @@ export function LandingPage() {
     </section>
   )
 }
-
-
-

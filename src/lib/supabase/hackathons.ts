@@ -16,12 +16,28 @@ export const listHackathons = async () => supabase.from('hackathons').select('*'
 export const getHackathonById = async (id: string) =>
   supabase.from('hackathons').select('*').eq('id', id).maybeSingle()
 
-export const getActiveHackathon = async () =>
-  supabase
+export const getActiveHackathon = async () => {
+  // First try to get the explicitly active hackathon
+  const { data: active, error: activeError } = await supabase
     .from('hackathons')
     .select('*')
     .eq('is_active', true)
     .maybeSingle<Hackathon>()
+
+  if (activeError) return { data: null, error: activeError }
+  if (active) return { data: active, error: null }
+
+  // If no active hackathon, get the most recent OPEN or STARTED hackathon
+  const { data: openHackathon, error: openError } = await supabase
+    .from('hackathons')
+    .select('*')
+    .in('status', ['OPEN', 'STARTED'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle<Hackathon>()
+
+  return { data: openHackathon, error: openError }
+}
 
 export const createHackathon = async (input: HackathonInsert) =>
   supabase

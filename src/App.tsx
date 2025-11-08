@@ -4,6 +4,7 @@ import { RequireRole } from '@/routes/guards/require-role'
 import { LandingPage } from '@/routes/landing'
 import { ProfilePage } from '@/routes/profile'
 import { AdminHackathonsPage } from '@/routes/admin/hackathons'
+import { AdminHackathonsEditPage } from '@/routes/admin/hackathons-edit'
 import { AdminJudgesPage } from '@/routes/admin/judges'
 import { AdminTeamsPage } from '@/routes/admin/teams'
 import { JudgingDashboardPage } from '@/routes/judging/dashboard'
@@ -31,6 +32,14 @@ function App() {
             element={
               <RequireRole allowedRoles={['admin']}>
                 <AdminHackathonsPage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="admin/hackathons/:id"
+            element={
+              <RequireRole allowedRoles={['admin']}>
+                <AdminHackathonsEditPage />
               </RequireRole>
             }
           />
