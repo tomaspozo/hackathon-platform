@@ -67,7 +67,7 @@ export const getOpenHackathons = async () => {
   return supabase
     .from('hackathons')
     .select('*')
-    .eq('status', 'OPEN')
+    .in('status', ['OPEN', 'STARTED'])
     .order('start_at', { ascending: true })
 }
 
